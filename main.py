@@ -1,144 +1,156 @@
 import discord
 from discord.ext import commands
-from openai import OpenAI
-import asyncio
-from datetime import datetime
-from zoneinfo import ZoneInfo
-import random
 import os
 from dotenv import load_dotenv
+from flask import Flask
+from threading import Thread
+from motor.motor_asyncio import AsyncIOMotorClient
 
-# Đọc file .env
+# ==========================================
+# 1. KEEP ALIVE (24/7)
+# ==========================================
+app = Flask('')
+@app.route('/')
+def home(): return "Bot Dam 24/7 is Live!"
+
+def run(): app.run(host='0.0.0.0', port=8080)
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+# ==========================================
+# 2. CẤU HÌNH DATABASE & BOT
+# ==========================================
 load_dotenv()
-
 TOKEN = os.getenv("TOKEN_BOT_DAM")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+MONGO_URI = os.getenv("MONGO_URI")
 
-# Khởi tạo OpenAI Client
-client = OpenAI(api_key=OPENAI_API_KEY)
+cluster = AsyncIOMotorClient(MONGO_URI)
+db = cluster["HoangCungDB"]
+collection = db["tuong_tac"]
 
 intents = discord.Intents.all()
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix="?", intents=intents, help_command=None)
 
-# KHỞI TẠO BIẾN LOCK (Quan trọng để không lỗi AttributeError)
-bot._ai_lock = False
+@bot.event
+async def on_ready():
+    print(f"--- ✅ BOT DAM ONLINE 24/7 (DATA CLOUD) ---")
 
-# -----------------------------
-# ====== Kiểm tra quyền =======
-# -----------------------------
-def is_admin_or_qtv(ctx):
-    qtv_role = discord.utils.get(ctx.guild.roles, name="QTV")
-    return ctx.author.guild_permissions.administrator or (qtv_role in ctx.author.roles)
+@bot.event
+async def on_message(message):
+    if message.author.bot: return
+    uid = str(message.author.id)
+    await collection.update_one(
+        {"_id": uid},
+        {"$inc": {"count": 1}, "$set": {"name": message.author.display_name}},
+        upsert=True
+    )
+    await bot.process_commands(message)
 
-# -----------------------------
-# ============ AI =============
-# -----------------------------
+# ==========================================
+# 3. HỆ THỐNG SINH SÁT (KICK/BAN/ADMIN)
+# ==========================================
+def checks_leader():
+    async def predicate(ctx):
+        is_qtv = discord.utils.get(ctx.author.roles, name="QTV") is not None
+        return ctx.author.guild_permissions.administrator or is_qtv
+    return commands.check(predicate)
+
 @bot.command()
-async def ai(ctx, *, prompt: str):
-    if bot._ai_lock:
-        await ctx.send("🤖 Bot đang xử lý yêu cầu trước, vui lòng chờ...")
-        return
-    
-    bot._ai_lock = True
-    try:
-        # Nếu hỏi giờ (Dùng ZoneInfo để chuẩn giờ VN)
-        if any(word in prompt.lower() for word in ["giờ", "mấy giờ", "time"]):
-            vn_time = datetime.now(ZoneInfo("Asia/Ho_Chi_Minh")).strftime("%H:%M:%S | %d/%m/%Y")
-            await ctx.send(f"🕒 Giờ hiện tại ở Hà Nội: **{vn_time}**")
-            bot._ai_lock = False
-            return
-
-        msg = await ctx.send("🤖 AI đang suy nghĩ...")
-        
-        # Chạy trong thread để không làm treo bot
-        response = await asyncio.to_thread(
-            lambda: client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=500
-            )
-        )
-        answer = response.choices[0].message.content
-        await msg.edit(content=f"💬 {answer}")
-
-    except Exception as e:
-        await ctx.send(f"❌ Lỗi AI: {e}")
-    finally:
-        bot._ai_lock = False
-
-# -----------------------------
-# ==== Quản trị (Admin/QTV) ====
-# -----------------------------
-@bot.command()
+@checks_leader()
 async def kick(ctx, member: discord.Member, *, reason=None):
-    if is_admin_or_qtv(ctx):
-        await member.kick(reason=reason)
-        await ctx.send(f"🚫 Đã sút bay màu {member.mention}!")
-    else:
-        await ctx.send("❌ Sếp không có quyền dùng lệnh này!")
+    await member.kick(reason=reason)
+    await ctx.send(f"🚫 Đã đuổi cổ {member.mention}! Lý do: {reason}")
 
 @bot.command()
+@checks_leader()
 async def ban(ctx, member: discord.Member, *, reason=None):
-    if is_admin_or_qtv(ctx):
-        await member.ban(reason=reason)
-        await ctx.send(f"🔨 Đã ban vĩnh viễn {member.mention}!")
-    else:
-        await ctx.send("❌ Quyền lực chưa đủ để ban sếp ơi!")
+    await member.ban(reason=reason)
+    await ctx.send(f"🔨 Đã tiễn {member.mention} về trời! Lý do: {reason}")
+
+class AdminView(discord.ui.View):
+    def __init__(self): super().__init__(timeout=None)
+    @discord.ui.button(label="🧹 Reset Tương Tác", style=discord.ButtonStyle.danger)
+    async def reset(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not interaction.user.guild_permissions.administrator:
+            return await interaction.response.send_message("❌ Sếp mới làm được!", ephemeral=True)
+        await collection.delete_many({})
+        await interaction.response.send_message("🧹 Đã dọn sạch database Cloud!")
 
 @bot.command()
-async def pingrole(ctx, *, role_name: str = "QTV"):
-    if not is_admin_or_qtv(ctx):
-        return await ctx.send("❌ Lệnh này dành cho QTV!")
-    
-    role = discord.utils.get(ctx.guild.roles, name=role_name)
-    if role and role.members:
-        messages = [
-            f"📢 {role.mention} vào việc nè!",
-            f"🔥 Hội {role.mention} tập hợp!",
-            f"🚨 Báo động {role.mention}!"
-        ]
-        # Dùng random ở đây để VS Code hết báo mờ nè sếp
-        await ctx.send(random.choice(messages))
-    else:
-        await ctx.send(f"⚠️ Không tìm thấy role {role_name} hoặc role không có ai.")
+@commands.has_permissions(administrator=True)
+async def admin_panel(ctx):
+    await ctx.send("👑 **BẢNG ĐIỀU KHIỂN SẾP TỔNG**", view=AdminView())
 
-# -----------------------------
-# ========== Tương tác =========
-# -----------------------------
+# ==========================================
+# 4. TỐ CÁO & GÓP Ý (MODAL)
+# ==========================================
+class ReportModal(discord.ui.Modal, title='🚨 Tố Cáo Ẩn Danh'):
+    victim = discord.ui.TextInput(label='Kẻ bị tố cáo', placeholder='Nhập tên/tag...')
+    reason = discord.ui.TextInput(label='Lý do/Bằng chứng', style=discord.TextStyle.paragraph)
+    async def on_submit(self, interaction: discord.Interaction):
+        admin = discord.utils.get(interaction.guild.members, name="vitentoi")
+        embed = discord.Embed(title="🚨 TỐ CÁO", color=0xff0000)
+        embed.add_field(name="Gửi bởi", value=interaction.user.mention)
+        embed.add_field(name="Kẻ bị tố", value=self.victim.value)
+        embed.add_field(name="Nội dung", value=self.reason.value, inline=False)
+        if admin: await admin.send(embed=embed)
+        await interaction.response.send_message("✅ Đã gửi báo cáo kín!", ephemeral=True)
+
 @bot.command()
-async def tat(ctx, member: discord.Member):
-    slap_gifs = [
-        "https://media.giphy.com/media/jLeyZWgtwgr2U/giphy.gif",
-        "https://media.giphy.com/media/RXGNsyRb1hDJm/giphy.gif"
-    ]
-    embed = discord.Embed(title=f"{ctx.author.display_name} vả lật mặt {member.display_name}!", color=discord.Color.red())
-    embed.set_image(url=random.choice(slap_gifs))
+@commands.has_permissions(administrator=True)
+async def setup_report(ctx):
+    view = discord.ui.View(timeout=None)
+    btn = discord.ui.Button(label="Gửi Tố Cáo", style=discord.ButtonStyle.danger)
+    btn.callback = lambda i: i.response.send_modal(ReportModal())
+    view.add_item(btn)
+    await ctx.send("🛡️ **HÒM THƯ TỐ CÁO**", view=view)
+
+# ==========================================
+# 5. BỘ LỆNH CHỌC GHẸO (DAM, TAT, SUT...)
+# ==========================================
+@bot.command()
+async def dam(ctx, member: discord.Member):
+    embed = discord.Embed(title=f"👊 {ctx.author.display_name} đấm vỡ alo {member.display_name}!", color=0xff0000)
+    embed.set_image(url="https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHJueGZ3bmZ3bmZ3bmZ3bmZ3bmZ3JmVwPXYxX2ludGVybmFsX2dpZl9ieV9pZCZjdD1n/alsdBBDv2vWVS/giphy.gif")
     await ctx.send(embed=embed)
 
 @bot.command()
-async def om(ctx, member: discord.Member):
-    hug_gifs = ["https://media.giphy.com/media/l2QDM9Jnim1YVILXa/giphy.gif"]
-    embed = discord.Embed(title=f"{ctx.author.display_name} ôm {member.display_name} cực chặt!", color=discord.Color.purple())
-    embed.set_image(url=random.choice(hug_gifs))
-    await ctx.send(embed=embed)
+async def tat(ctx, member: discord.Member): await ctx.send(f"✋ {ctx.author.mention} tát {member.mention} vêu mồm!")
+@bot.command()
+async def sut(ctx, member: discord.Member): await ctx.send(f"👞 {ctx.author.mention} sút {member.mention} bay màu!")
+@bot.command()
+async def om(ctx, member: discord.Member): await ctx.send(f"❤️ {ctx.author.mention} ôm {member.mention} thắm thiết!")
+@bot.command()
+async def hon(ctx, member: discord.Member): await ctx.send(f"😘 {ctx.author.mention} hôn {member.mention} nồng cháy!")
+@bot.command()
+async def ngu(ctx, member: discord.Member): await ctx.send(f"🧠 {member.mention}, bớt cái sự **ngu** lại cho anh em nhờ!")
+@bot.command()
+async def ngao(ctx, member: discord.Member): await ctx.send(f"🥴 {member.mention} ngáo vừa thôi sếp!")
+
+# ==========================================
+# 6. MENU & TOP
+# ==========================================
+@bot.command()
+async def top(ctx):
+    cursor = collection.find().sort("count", -1).limit(10)
+    data = await cursor.to_list(length=10)
+    if not data: return await ctx.send("📊 Data đang trống!")
+    desc = ""
+    for i, doc in enumerate(data):
+        medal = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else f"#{i+1}"
+        desc += f"{medal} **{doc['name']}**: `{doc['count']}` tin\n"
+    await ctx.send(embed=discord.Embed(title="🏆 CHIẾN THẦN TƯƠNG TÁC", description=desc, color=0x00ff00))
 
 @bot.command()
-async def helpme(ctx):
-    commands_list = """
-**Hệ thống Siêu Bot AI:**
-`!ai <câu hỏi>` - Hỏi đáp thông minh
-`!kick/!ban <@user>` - Kỷ luật (QTV/Admin)
-`!pingrole QTV` - Triệu hồi QTV
-`!mostactive` - Xem ai nhắn nhiều nhất
-`!om/!tat/!sut <@user>` - Chọc ghẹo có GIF
-`!helpme` - Xem lại bảng này
-"""
-    await ctx.send(commands_list)
+async def list(ctx):
+    embed = discord.Embed(title="🐂 HOANG CUNG BO - BOT DAM", color=0xffd700)
+    embed.add_field(name="🎁 QUÀ", value="🏆 **180k VND** cho **Top 1**!", inline=False)
+    embed.add_field(name="🎧 NHẠC (Prefix !)", value="`!list1, !list2, !list3`", inline=False)
+    embed.add_field(name="🎉 GHẸO (? )", value="`?dam, ?tat, ?sut, ?om, ?hon, ?ngu, ?ngao, ?top, ?check`", inline=False)
+    embed.add_field(name="🛡️ ADMIN (? )", value="`?admin_panel, ?kick, ?ban, ?setup_report`", inline=False)
+    await ctx.send(embed=embed)
 
-# -----------------------------
-# ==== Chạy bot =====
-# -----------------------------
 if TOKEN:
-    bot.run(TOKEN)
-else:
-    print("❌ Lỗi: Chưa tìm thấy TOKEN trong file .env!")
+    keep_alive()
+    bot.run(TOKEN.strip())
