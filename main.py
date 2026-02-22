@@ -18,6 +18,7 @@ def keep_alive():
     t = Thread(target=run)
     t.start()
 # Sửa đoạn khai báo intents này
+intents = discord.Intents.default()
 intents.message_content = True  # THIẾU DÒNG NÀY LÀ BOT ĐIẾC
 intents.members = True
 # ==========================================
