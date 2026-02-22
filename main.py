@@ -18,10 +18,9 @@ def keep_alive():
     t = Thread(target=run)
     t.start()
 # Sửa đoạn khai báo intents này
-intents = discord.Intents.default() # Dùng default cho ổn định
-intents.message_content = True      # Bật quyền đọc nội dung tin nhắn
-intents.members = True              # Bật quyền xem thành viên
-
+intents = discord.Intents.default()
+intents.message_content = True  # THIẾU DÒNG NÀY LÀ BOT ĐIẾC
+intents.members = True
 bot = commands.Bot(command_prefix="?", intents=intents, help_command=None)
 # ==========================================
 # 2. CẤU HÌNH DATABASE & BOT
