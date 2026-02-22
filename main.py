@@ -17,7 +17,12 @@ def run(): app.run(host='0.0.0.0', port=8080)
 def keep_alive():
     t = Thread(target=run)
     t.start()
+# Sửa đoạn khai báo intents này
+intents = discord.Intents.default() # Dùng default cho ổn định
+intents.message_content = True      # Bật quyền đọc nội dung tin nhắn
+intents.members = True              # Bật quyền xem thành viên
 
+bot = commands.Bot(command_prefix="?", intents=intents, help_command=None)
 # ==========================================
 # 2. CẤU HÌNH DATABASE & BOT
 # ==========================================
