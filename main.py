@@ -18,9 +18,12 @@ def keep_alive():
     t = Thread(target=run)
     t.start()
 # Sửa đoạn khai báo intents này
+# Khai báo chuẩn nhất để bot đọc được tin nhắn
 intents = discord.Intents.default()
-intents.message_content = True  # THIẾU DÒNG NÀY LÀ BOT ĐIẾC
+intents.message_content = True 
 intents.members = True
+
+bot = commands.Bot(command_prefix="?", intents=intents, help_command=None)
 # ==========================================
 # 2. CẤU HÌNH DATABASE & BOT
 # ==========================================
