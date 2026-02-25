@@ -642,9 +642,10 @@ async def list(ctx):
 
     embed.add_field(
         name="👑 QUẢN TRỊ",
-        value="`?kick`, `?ban`, `?setmoney`, `?setup_report`, `?noti`, `?reset_top`",
+        value="`?kick`, `?ban`, `?setmoney`, `?setup_report`, `?noti`, `?reset_top`, `?pingall`",
         inline=False
     )
+
 
     embed.add_field(
         name="💰 KINH TẾ",
