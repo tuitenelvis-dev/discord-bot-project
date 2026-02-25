@@ -450,6 +450,18 @@ async def setup_report(ctx):
         description="Hệ thống report đã sẵn sàng.",
         color=0xf1c40f
     ))
+@bot.command()
+async def pingall(ctx, *, content: str):
+    # Kiểm tra quyền
+    if not has_permission(ctx.author):
+        return await ctx.send(embed=discord.Embed(
+            title="❌ Không có quyền",
+            description="Chỉ Admin hoặc QTV mới được dùng lệnh này.",
+            color=0xe74c3c
+        ))
+
+    # Gửi ping all
+    await ctx.send(f"@everyone {content}")
 
 
 # =========================
