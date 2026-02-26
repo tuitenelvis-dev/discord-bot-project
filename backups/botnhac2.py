@@ -2,6 +2,11 @@ import discord
 from discord.ext import commands
 import yt_dlp
 import asyncio
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+TOKEN = os.getenv("TOKEN_NHAC_1")
 
 # Cấu hình Intents
 intents = discord.Intents.default()
@@ -107,4 +112,4 @@ async def on_command_error(ctx, error):
     if isinstance(error, commands.CheckFailure):
         return # Không làm gì cả, không nhắn bậy sang channel khác
 
-bot.run('TOKEN_NHAC_2')
+bot.run(TOKEN)
