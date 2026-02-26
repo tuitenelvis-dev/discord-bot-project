@@ -325,69 +325,15 @@ async def dilam(ctx):
 # =========================
 # TÀI XỈU
 # =========================
-@bot.command()
-async def taixiu(ctx, choice: str, amount: int):
-    if ctx.channel.id != CHANNEL_TAIXIU:
-        return await ctx.send(embed=discord.Embed(
-            title="❌ Sai khu vực",
-            description="Bạn chỉ có thể chơi tài xỉu trong **khu vực tài xỉu**.",
-            color=0xe74c3c
-        ))
-
-    choice = choice.lower()
-    if choice not in ["tai", "xiu"]:
-        return await ctx.send(embed=discord.Embed(
-            title="❌ Lỗi",
-            description="Bạn phải chọn `tai` hoặc `xiu`.",
-            color=0xe74c3c
-        ))
-
-    if not sub_money(ctx.author.id, amount):
-        return await ctx.send(embed=discord.Embed(
-            title="❌ Không đủ tiền",
-            description="Bạn không đủ tiền để chơi.",
-            color=0xe74c3c
-        ))
-
-    dice = random.randint(3, 18)
-    result = "tai" if dice >= 11 else "xiu"
-    win = (result == choice)
-
-    embed = discord.Embed(
-        title="🎲 KẾT QUẢ TÀI XỈU",
-        color=0x2ecc71 if win else 0xe74c3c
-    )
-    embed.add_field(name="👤 UID", value=str(ctx.author.id), inline=False)
-    embed.add_field(name="🎲 Tổng nút", value=str(dice))
-    embed.add_field(name="📌 Kết quả", value=result.upper())
-    embed.add_field(name="💸 Cược", value=f"{amount:,} VND", inline=False)
-
-    if win:
-        winnings = amount * 2
-        add_money(ctx.author.id, winnings)
-        embed.add_field(name="🎉 Trạng thái", value="THẮNG")
-        embed.add_field(name="💰 Nhận được", value=f"{winnings:,} VND", inline=False)
-    else:
-        embed.add_field(name="❌ Trạng thái", value="THUA")
-
-    embed.add_field(name="💳 Số dư hiện tại", value=f"{get_money(ctx.author.id):,} VND", inline=False)
-
-    await ctx.send(embed=embed)
 import discord
 from discord.ext import commands
 import random
 import json
 import os
 
-# ==========================
-# CẤU HÌNH
-# ==========================
 TAIXIU_CHANNEL_ID = 1475008504468340888
 DATA_FILE = "money.json"
 
-# ==========================
-# HÀM LOAD / SAVE TIỀN
-# ==========================
 def load_money():
     if not os.path.exists(DATA_FILE):
         with open(DATA_FILE, "w") as f:
@@ -399,15 +345,11 @@ def save_money(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
-# ==========================
-# CHECK ĐÚNG CHANNEL
-# ==========================
+# CHECK CHANNEL
 def is_taixiu_channel(ctx):
     return ctx.channel.id == TAIXIU_CHANNEL_ID
 
-# ==========================
 # LỆNH TÀI XỈU
-# ==========================
 @commands.cooldown(1, 5, commands.BucketType.user)
 @commands.check(is_taixiu_channel)
 @commands.command()
@@ -417,12 +359,11 @@ async def taixiu(ctx, bet: int, choice: str):
     if choice not in ["tài", "xỉu", "tai", "xiu"]:
         return await ctx.send("❌ Bạn phải chọn **tài** hoặc **xỉu**.")
 
-    # Load tiền
     money = load_money()
     uid = str(ctx.author.id)
 
     if uid not in money:
-        money[uid] = 10000  # tiền mặc định
+        money[uid] = 10000
 
     if bet <= 0:
         return await ctx.send("❌ Tiền cược phải lớn hơn 0.")
@@ -430,7 +371,6 @@ async def taixiu(ctx, bet: int, choice: str):
     if bet > money[uid]:
         return await ctx.send("❌ Bạn không đủ tiền để cược.")
 
-    # Random 3 xúc xắc
     dice = [random.randint(1, 6) for _ in range(3)]
     total = sum(dice)
 
@@ -446,7 +386,6 @@ async def taixiu(ctx, bet: int, choice: str):
 
     save_money(money)
 
-    # Embed kết quả
     embed = discord.Embed(
         title="🎲 KẾT QUẢ TÀI XỈU",
         color=discord.Color.green() if win else discord.Color.red()
@@ -460,18 +399,18 @@ async def taixiu(ctx, bet: int, choice: str):
 
     await ctx.send(embed=embed)
 
-# ==========================
-# XỬ LÝ LỖI CHANNEL
-# ==========================
-async def setup(bot):
-    bot.add_command(taixiu)
-
-@taixiu.error
-async def taixiu_error(ctx, error):
+# BẮT LỖI CHUNG
+@bot.event
+async def on_command_error(ctx, error):
     if isinstance(error, commands.CheckFailure):
         await ctx.send("❌ Bạn phải vào **kênh Tài Xỉu** mới được chơi!")
-    elif isinstance(error, commands.CommandOnCooldown):
+        return
+
+    if isinstance(error, commands.CommandOnCooldown):
         await ctx.send(f"⏳ Chậm lại nào! Thử lại sau **{error.retry_after:.1f}s**.")
+        return
+
+    raise error
 
 
 # =========================
