@@ -6,7 +6,12 @@ import asyncio
 # ==========================
 # CẤU HÌNH BOT 1
 # ==========================
-TOKEN = "TOKEN_NHAC_1"
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+TOKEN = os.getenv("TOKEN_NHAC_1")
+
 SERVER_ID = 1413966849053294634   # ID server Hoàng Cung
 VOICE_CHANNEL_ID = 1474786871400861828  # Room Nhạc 1
 TEXT_CHANNEL_NAME = "🎵nghe-nhạc-room-1"  # Tên channel chat nhạc 1
