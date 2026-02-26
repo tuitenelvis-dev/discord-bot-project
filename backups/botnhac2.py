@@ -2,114 +2,203 @@ import discord
 from discord.ext import commands
 import yt_dlp
 import asyncio
+
+# ==========================
+# CẤU HÌNH BOT 2
+# ==========================
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
-TOKEN = os.getenv("TOKEN_NHAC_1")
+TOKEN = os.getenv("TOKEN_NHAC_2")
+SERVER_ID = 1413966849053294634   # ID server Hoàng Cung
+VOICE_CHANNEL_ID = 1474786961993498787  # Room Nhạc 2
+TEXT_CHANNEL_NAME = "🎵nghe-nhạc-room-2"  # Tên channel chat nhạc 2
 
-# Cấu hình Intents
 intents = discord.Intents.default()
 intents.message_content = True
 intents.voice_states = True
+bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Đổi prefix thành !2 để tránh trùng lặp hoàn toàn với Bot 1 nếu muốn xịn hơn, 
-# hoặc giữ nguyên ! nhưng dùng check_channel để lọc.
-bot = commands.Bot(command_prefix='!', intents=intents)
-
-YDL_OPTIONS = {'format': 'bestaudio', 'noplaylist': 'True'}
-FFMPEG_OPTIONS = {
-    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-    'options': '-vn'
+# ==========================
+# CẤU HÌNH NHẠC
+# ==========================
+YDL_OPTIONS = {
+    "format": "bestaudio/best",
+    "noplaylist": "True",
+    "quiet": True
 }
 
-# --- CẤU HÌNH RIÊNG CHO BOT 2 ---
-TARGET_GUILD_NAME = "Hoang Cung Bo"
-TARGET_CHANNEL_NAME = "🎵Nghe Nhạc Room 2"
-# -------------------------------
+FFMPEG_OPTIONS = {
+    "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
+    "options": "-vn"
+}
 
+queue = []
 current_song = None
 is_repeat = False
 
+
+# ==========================
+# CHỈ CHO PHÉP BOT HOẠT ĐỘNG ĐÚNG PHÒNG
+# ==========================
+def is_correct_room(ctx):
+    return (
+        ctx.guild.id == SERVER_ID and
+        ctx.channel.name == TEXT_CHANNEL_NAME
+    )
+
+
+# ==========================
+# BOT READY → TỰ JOIN VOICE
+# ==========================
 @bot.event
 async def on_ready():
-    print(f'✅ {bot.user.name} (Bot 2) đã sẵn sàng!')
-    
-    # Tự động nhảy vào Room 2
-    for guild in bot.guilds:
-        if guild.name == TARGET_GUILD_NAME:
-            channel = discord.utils.get(guild.voice_channels, name=TARGET_CHANNEL_NAME)
-            if channel:
+    print(f"🎵 Bot Nhạc 2 đã online!")
+
+    guild = bot.get_guild(SERVER_ID)
+    if guild:
+        channel = guild.get_channel(VOICE_CHANNEL_ID)
+        if channel:
+            try:
                 await channel.connect()
-                print(f"📍 Bot 2 đã vào {TARGET_CHANNEL_NAME}")
+                print("Đã vào voice channel Room 2")
+            except:
+                pass
 
-def is_room_2(ctx):
-    """
-    HÀM QUAN TRỌNG: Chỉ cho phép Bot 2 hoạt động 
-    nếu Server là 'Hoang Cung Bo' VÀ Channel là '🎵Nghe Nhạc Room 2'
-    """
-    return ctx.guild.name == TARGET_GUILD_NAME and ctx.channel.name == TARGET_CHANNEL_NAME
 
+# ==========================
+# LỆNH LIST
+# ==========================
 @bot.command()
-@commands.check(is_room_2) # Chỉ work trong Room 2
+@commands.check(is_correct_room)
 async def list2(ctx):
-    embed = discord.Embed(
-        title="🎵 Danh sách lệnh Bot nhạc 2",
-        description="Hệ thống âm thanh Room 2 - Hoàng Cung",
-        color=discord.Color.blue() # Đổi màu xanh cho khác Bot 1
-    )
-    embed.add_field(name="!play [tên/link]", value="Phát nhạc tại Room 2", inline=False)
+    embed = discord.Embed(title="🎵 Danh sách lệnh Bot Nhạc 2", color=discord.Color.blue())
+    embed.add_field(name="!play [tên/link]", value="Phát nhạc", inline=False)
+    embed.add_field(name="!add [tên/link]", value="Thêm bài vào danh sách phát", inline=False)
     embed.add_field(name="!skip", value="Bỏ qua bài hiện tại", inline=False)
-    embed.add_field(name="!stop", value="Dừng và xóa hàng đợi", inline=False)
-    embed.add_field(name="!repeat", value="Bật/Tắt lặp lại", inline=False)
-    embed.set_footer(text=f"📍 Chỉ hoạt động tại: {TARGET_CHANNEL_NAME}")
-    
+    embed.add_field(name="!stop", value="Dừng nhạc", inline=False)
+    embed.add_field(name="!repeat", value="Bật/Tắt lặp lại bài", inline=False)
+    embed.add_field(name="!queue", value="Xem danh sách phát", inline=False)
+    embed.set_footer(text="📍 Chỉ hoạt động tại Room Nhạc 2")
     await ctx.send(embed=embed)
 
-@bot.command()
-@commands.check(is_room_2)
-async def play(ctx, *, search: str):
+
+# ==========================
+# HÀM PHÁT NHẠC
+# ==========================
+async def play_song(ctx, url):
     global current_song
-    voice_client = ctx.message.guild.voice_client
 
-    if not voice_client:
-        return # Im lặng nếu không ở trong voice
+    voice = ctx.voice_client
+    if not voice:
+        return await ctx.send("Bot chưa vào voice!")
 
-    async with ctx.typing():
-        with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
-            info = ydl.extract_info(f"ytsearch:{search}", download=False)['entries'][0]
-            url = info['url']
-            title = info['title']
-            current_song = {'url': search, 'title': title}
+    with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
+        info = ydl.extract_info(url, download=False)
+        audio_url = info["url"]
+        title = info["title"]
+        current_song = {"url": url, "title": title}
 
-        def play_next(error):
-            if is_repeat and current_song:
-                bot.loop.create_task(play(ctx, search=current_song['url']))
+    source = await discord.FFmpegOpusAudio.from_probe(audio_url, **FFMPEG_OPTIONS)
 
-        voice_client.stop()
-        source = await discord.FFmpegOpusAudio.from_probe(url, **FFMPEG_OPTIONS)
-        voice_client.play(source, after=play_next)
-        
-    await ctx.send(f"🎶 [Room 2] Đang phát: **{title}**")
+    def after_play(err):
+        if is_repeat:
+            bot.loop.create_task(play_song(ctx, current_song["url"]))
+        else:
+            if queue:
+                next_url = queue.pop(0)
+                bot.loop.create_task(play_song(ctx, next_url))
 
+    voice.play(source, after=after_play)
+    await ctx.send(f"🎶 Đang phát: **{title}**")
+
+
+# ==========================
+# LỆNH PLAY
+# ==========================
 @bot.command()
-@commands.check(is_room_2)
-async def stop(ctx):
-    if ctx.voice_client:
-        ctx.voice_client.stop()
-        await ctx.send("⏹️ Bot 2 đã dừng nhạc.")
+@commands.check(is_correct_room)
+async def play(ctx, *, search):
+    with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
+        info = ydl.extract_info(f"ytsearch:{search}", download=False)["entries"][0]
+        url = info["webpage_url"]
 
+    await play_song(ctx, url)
+
+
+# ==========================
+# LỆNH ADD QUEUE
+# ==========================
 @bot.command()
-@commands.check(is_room_2)
+@commands.check(is_correct_room)
+async def add(ctx, *, search):
+    with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
+        info = ydl.extract_info(f"ytsearch:{search}", download=False)["entries"][0]
+        url = info["webpage_url"]
+        title = info["title"]
+
+    queue.append(url)
+    await ctx.send(f"➕ Đã thêm vào danh sách: **{title}**")
+
+
+# ==========================
+# LỆNH QUEUE
+# ==========================
+@bot.command()
+@commands.check(is_correct_room)
+async def queue(ctx):
+    if not queue:
+        return await ctx.send("📭 Danh sách phát trống!")
+
+    msg = "**📜 Danh sách phát:**\n"
+    for i, url in enumerate(queue, start=1):
+        msg += f"{i}. {url}\n"
+
+    await ctx.send(msg)
+
+
+# ==========================
+# LỆNH SKIP
+# ==========================
+@bot.command()
+@commands.check(is_correct_room)
 async def skip(ctx):
     if ctx.voice_client and ctx.voice_client.is_playing():
         ctx.voice_client.stop()
-        await ctx.send("⏭️ Đã bỏ qua bài hiện tại (Bot 2).")
+        await ctx.send("⏭️ Đã bỏ qua bài.")
 
-# Xử lý lỗi: Nếu nhắn sai channel, Bot 2 sẽ im lặng hoàn toàn
+
+# ==========================
+# LỆNH STOP
+# ==========================
+@bot.command()
+@commands.check(is_correct_room)
+async def stop(ctx):
+    queue.clear()
+    if ctx.voice_client:
+        ctx.voice_client.stop()
+    await ctx.send("⏹️ Đã dừng nhạc.")
+
+
+# ==========================
+# LỆNH REPEAT
+# ==========================
+@bot.command()
+@commands.check(is_correct_room)
+async def repeat(ctx):
+    global is_repeat
+    is_repeat = not is_repeat
+    await ctx.send(f"🔁 Lặp lại: **{'BẬT' if is_repeat else 'TẮT'}**")
+
+
+# ==========================
+# CHẶN LỆNH SAI CHANNEL
+# ==========================
 @bot.event
 async def on_command_error(ctx, error):
     if isinstance(error, commands.CheckFailure):
-        return # Không làm gì cả, không nhắn bậy sang channel khác
+        return
+
 
 bot.run(TOKEN)
