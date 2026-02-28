@@ -325,7 +325,6 @@ async def dilam(ctx):
 # =========================
 # TÀI XỈU
 # =========================
-
 TAIXIU_CHANNEL_ID = 1475008504468340888
 DATA_FILE_TX = "money.json"
 
@@ -391,7 +390,6 @@ async def taixiu(ctx, bet: int, choice: str):
     embed.add_field(name="💵 Số dư mới", value=f"{money[uid]}", inline=False)
 
     await ctx.send(embed=embed)
-
 
 
 # =========================
