@@ -325,26 +325,19 @@ async def dilam(ctx):
 # =========================
 # TÀI XỈU
 # =========================
-import discord
-from discord.ext import commands
-import random
-import json
-import os
-
-bot = commands.Bot(command_prefix="?", intents=discord.Intents.all())
 
 TAIXIU_CHANNEL_ID = 1475008504468340888
-DATA_FILE = "money.json"
+DATA_FILE_TX = "money.json"
 
 def load_money():
-    if not os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "w") as f:
+    if not os.path.exists(DATA_FILE_TX):
+        with open(DATA_FILE_TX, "w") as f:
             json.dump({}, f)
-    with open(DATA_FILE, "r") as f:
+    with open(DATA_FILE_TX, "r") as f:
         return json.load(f)
 
 def save_money(data):
-    with open(DATA_FILE, "w") as f:
+    with open(DATA_FILE_TX, "w") as f:
         json.dump(data, f, indent=4)
 
 def is_taixiu_channel(ctx):
@@ -354,21 +347,52 @@ def is_taixiu_channel(ctx):
 @commands.check(is_taixiu_channel)
 @bot.command()
 async def taixiu(ctx, bet: int, choice: str):
-    ...
-    (phần code của bạn giữ nguyên)
-    ...
+    choice = choice.lower()
 
-@bot.event
-async def on_command_error(ctx, error):
-    if isinstance(error, commands.CheckFailure):
-        await ctx.send("❌ Bạn phải vào **kênh Tài Xỉu** mới được chơi!")
-        return
+    if choice not in ["tài", "xỉu", "tai", "xiu"]:
+        return await ctx.send("❌ Bạn phải chọn **tài** hoặc **xỉu**.")
 
-    if isinstance(error, commands.CommandOnCooldown):
-        await ctx.send(f"⏳ Chậm lại nào! Thử lại sau **{error.retry_after:.1f}s**.")
-        return
+    money = load_money()
+    uid = str(ctx.author.id)
 
-    raise error
+    if uid not in money:
+        money[uid] = 10000
+
+    if bet <= 0:
+        return await ctx.send("❌ Tiền cược phải lớn hơn 0.")
+
+    if bet > money[uid]:
+        return await ctx.send("❌ Bạn không đủ tiền để cược.")
+
+    dice = [random.randint(1, 6) for _ in range(3)]
+    total = sum(dice)
+
+    result = "tài" if total >= 11 else "xỉu"
+
+    win = (choice.startswith("t") and result == "tài") or \
+          (choice.startswith("x") and result == "xỉu")
+
+    if win:
+        money[uid] += bet
+    else:
+        money[uid] -= bet
+
+    save_money(money)
+
+    embed = discord.Embed(
+        title="🎲 KẾT QUẢ TÀI XỈU",
+        color=discord.Color.green() if win else discord.Color.red()
+    )
+    embed.add_field(name="🎯 Xúc xắc", value=f"{dice[0]} - {dice[1]} - {dice[2]}", inline=False)
+    embed.add_field(name="📌 Tổng", value=str(total), inline=True)
+    embed.add_field(name="📌 Kết quả", value=result.upper(), inline=True)
+    embed.add_field(name="💰 Bạn cược", value=f"{bet}", inline=False)
+    embed.add_field(name="🏆 Trạng thái", value="**THẮNG**" if win else "**THUA**", inline=False)
+    embed.add_field(name="💵 Số dư mới", value=f"{money[uid]}", inline=False)
+
+    await ctx.send(embed=embed)
+
+
 
 # =========================
 # ADMIN / QTV COMMANDS
