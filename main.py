@@ -12,11 +12,9 @@ import time
 load_dotenv()
 TOKEN = os.getenv("TOKEN_BOT_DAM")
 
-intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True
+intents = discord.Intents.all()
 
-bot = commands.Bot(command_prefix="?", intents=intents, help_command=None)
+bot = commands.Bot(command_prefix="?", intents=intents)
 
 DATA_FILE = "data.json"
 
